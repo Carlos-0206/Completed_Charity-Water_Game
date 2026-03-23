@@ -1,7 +1,8 @@
 // Game configuration and state variables
 const GOAL_CANS = 25;        // Total items needed to collect
-const GAME_DURATION = 30;    // Game duration in seconds
-const WIN_SCORE = 20;        // Score needed to win
+const BASE_GAME_DURATION = 30; // Starting game duration in seconds
+const BASE_WIN_SCORE = 20;     // Starting score needed to win
+const LEVEL_STEP = 10;         // Increase goal/time by this amount per level
 const WIN_MESSAGES = [
   'You Win!!',
   'Awesome job! You crushed it!',
@@ -18,7 +19,11 @@ let currentCans = 0;         // Current number of items collected
 let gameActive = false;      // Tracks if game is currently running
 let spawnInterval;          // Holds the interval for spawning items
 let timerInterval;          // Holds the interval for countdown timer
-let timeLeft = GAME_DURATION;
+let timeLeft = BASE_GAME_DURATION;
+let currentLevel = 1;
+let currentWinScore = BASE_WIN_SCORE;
+let currentGameDuration = BASE_GAME_DURATION;
+let audioContext;
 
 function getRandomMessage(messages) {
   const randomIndex = Math.floor(Math.random() * messages.length);
@@ -33,8 +38,54 @@ function updateTimerDisplay() {
   document.getElementById('timer').textContent = timeLeft;
 }
 
+function updateLevelDisplay() {
+  document.getElementById('current-level').textContent = currentLevel;
+}
+
+function updateInstructions() {
+  document.getElementById('game-instructions').textContent = `Collect ${currentWinScore} items in ${currentGameDuration} seconds to complete Level ${currentLevel}!`;
+}
+
 function updateEndMessage(message = '') {
   document.getElementById('achievements').textContent = message;
+}
+
+function playSplashSound() {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) return;
+
+  if (!audioContext) {
+    audioContext = new AudioContextClass();
+  }
+
+  if (audioContext.state === 'suspended') {
+    audioContext.resume();
+  }
+
+  const duration = 0.14;
+  const now = audioContext.currentTime;
+  const oscillator = audioContext.createOscillator();
+  const gainNode = audioContext.createGain();
+  const filter = audioContext.createBiquadFilter();
+
+  oscillator.type = 'triangle';
+  oscillator.frequency.setValueAtTime(420, now);
+  oscillator.frequency.exponentialRampToValueAtTime(160, now + duration);
+
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(1000, now);
+  filter.Q.value = 0.7;
+
+  gainNode.gain.setValueAtTime(0.0001, now);
+  gainNode.gain.exponentialRampToValueAtTime(0.18, now + 0.02);
+  gainNode.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+
+  oscillator.connect(filter);
+  filter.connect(gainNode);
+  gainNode.connect(audioContext.destination);
+
+  oscillator.start(now);
+  oscillator.stop(now + duration);
 }
 
 function showEndPopup(message) {
@@ -59,6 +110,8 @@ function createGrid() {
 
 // Ensure the grid is created when the page loads
 createGrid();
+updateLevelDisplay();
+updateInstructions();
 
 // Spawns a new item in a random grid cell
 function spawnWaterCan() {
@@ -84,9 +137,11 @@ function startGame() {
   if (gameActive) return; // Prevent starting a new game if one is already active
   gameActive = true;
   currentCans = 0;
-  timeLeft = GAME_DURATION;
+  timeLeft = currentGameDuration;
   updateCanDisplay();
   updateTimerDisplay();
+  updateLevelDisplay();
+  updateInstructions();
   updateEndMessage('');
   hideEndPopup();
   createGrid(); // Set up the game grid
@@ -107,10 +162,19 @@ function endGame() {
   clearInterval(timerInterval); // Stop countdown timer
 
   let endMessage;
-  if (currentCans >= WIN_SCORE) {
-    endMessage = getRandomMessage(WIN_MESSAGES);
+  if (currentCans >= currentWinScore) {
+    endMessage = `${getRandomMessage(WIN_MESSAGES)} Level ${currentLevel} complete!`;
+
+    currentLevel += 1;
+    currentWinScore += LEVEL_STEP;
+    currentGameDuration += LEVEL_STEP;
+
+    updateLevelDisplay();
+    updateInstructions();
+    document.getElementById('play-again').textContent = 'Start Next Level';
   } else {
     endMessage = getRandomMessage(LOSS_MESSAGES);
+    document.getElementById('play-again').textContent = 'Try Level Again';
   }
 
   updateEndMessage(endMessage);
@@ -133,6 +197,7 @@ document.querySelector('.game-grid').addEventListener('click', event => {
 
   currentCans += 1;
   updateCanDisplay();
+  playSplashSound();
 
   const wrapper = can.closest('.water-can-wrapper');
   if (wrapper) wrapper.remove();
