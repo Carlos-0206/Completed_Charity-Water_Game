@@ -9,6 +9,12 @@ const WIN_MESSAGES = [
   'Victory! Water saved the day!',
   'Great work! You reached the goal!'
 ];
+const CAN_TYPES = [
+  { className: 'water-can', points: 1, label: 'Water can' },
+  { className: 'water-can water-can--gold', points: 3, label: 'Golden jerry can' },
+  { className: 'water-can water-can--red', points: -1, label: 'Red jerry can' }
+];
+const MAX_CONSECUTIVE_RED_CANS = 3;
 const LOSS_MESSAGES = [
   'Try again..',
   'So close! Give it another shot!',
@@ -24,6 +30,7 @@ let currentLevel = 1;
 let currentWinScore = BASE_WIN_SCORE;
 let currentGameDuration = BASE_GAME_DURATION;
 let audioContext;
+let consecutiveRedCanSpawns = 0;
 
 function getRandomMessage(messages) {
   const randomIndex = Math.floor(Math.random() * messages.length);
@@ -48,6 +55,33 @@ function updateInstructions() {
 
 function updateEndMessage(message = '') {
   document.getElementById('achievements').textContent = message;
+}
+
+function getRandomCanType() {
+  const randomIndex = Math.floor(Math.random() * CAN_TYPES.length);
+  return CAN_TYPES[randomIndex];
+}
+
+function getSpawnCanType() {
+  const canPool = consecutiveRedCanSpawns >= MAX_CONSECUTIVE_RED_CANS
+    ? CAN_TYPES.filter(canType => canType.points !== -1)
+    : CAN_TYPES;
+
+  const randomIndex = Math.floor(Math.random() * canPool.length);
+  const canType = canPool[randomIndex];
+
+  consecutiveRedCanSpawns = canType.points === -1 ? consecutiveRedCanSpawns + 1 : 0;
+  return canType;
+}
+
+function collectCan(can) {
+  const points = Number(can.dataset.points || 0);
+  currentCans = Math.max(0, currentCans + points);
+  updateCanDisplay();
+  playSplashSound();
+
+  const wrapper = can.closest('.water-can-wrapper');
+  if (wrapper) wrapper.remove();
 }
 
 function playSplashSound() {
@@ -123,11 +157,12 @@ function spawnWaterCan() {
 
   // Select a random cell from the grid to place the water can
   const randomCell = cells[Math.floor(Math.random() * cells.length)];
+  const canType = getSpawnCanType();
 
   // Use a template literal to create the wrapper and water-can element
   randomCell.innerHTML = `
     <div class="water-can-wrapper">
-      <div class="water-can"></div>
+      <div class="${canType.className}" data-points="${canType.points}" aria-label="${canType.label}" role="button" tabindex="0"></div>
     </div>
   `;
 }
@@ -137,6 +172,7 @@ function startGame() {
   if (gameActive) return; // Prevent starting a new game if one is already active
   gameActive = true;
   currentCans = 0;
+  consecutiveRedCanSpawns = 0;
   timeLeft = currentGameDuration;
   updateCanDisplay();
   updateTimerDisplay();
@@ -195,10 +231,17 @@ document.querySelector('.game-grid').addEventListener('click', event => {
   const can = event.target.closest('.water-can');
   if (!can) return;
 
-  currentCans += 1;
-  updateCanDisplay();
-  playSplashSound();
+  collectCan(can);
+});
 
-  const wrapper = can.closest('.water-can-wrapper');
-  if (wrapper) wrapper.remove();
+document.querySelector('.game-grid').addEventListener('keydown', event => {
+  if (!gameActive) return;
+
+  const can = event.target.closest('.water-can');
+  if (!can) return;
+
+  if (event.key !== 'Enter' && event.key !== ' ') return;
+
+  event.preventDefault();
+  collectCan(can);
 });
